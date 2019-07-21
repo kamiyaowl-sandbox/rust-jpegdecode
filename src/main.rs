@@ -13,10 +13,43 @@ struct RgbImage {
 }
 
 impl RgbImage {
+    fn new(w: usize, h: usize) -> RgbImage {
+        assert!(w > 0);
+        assert!(h > 0);
+
+        RgbImage {
+            width: w,
+            height: h,
+            rData: vec![vec![0; w]; h],
+            gData: vec![vec![0; w]; h],
+            bData: vec![vec![0; w]; h],
+        }
+    }
+    fn clear(&mut self) -> () {
+        self.fill((0, 0, 0));
+    }
+    fn fill(&mut self, rgb: (u8, u8, u8)) -> () {
+        assert!(self.width > 0);
+        assert!(self.height > 0);
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                self.rData[y][x] = rgb.0;
+                self.gData[y][x] = rgb.1;
+                self.bData[y][x] = rgb.2;
+            }
+        }
+    }
     fn get_pixel(self, x: usize, y: usize) -> (u8, u8, u8) {
+        assert!(x < self.width);
+        assert!(y < self.height);
+        
         return (self.rData[y][x], self.gData[y][x], self.bData[y][x]);
     }
     fn set_pixel(&mut self, x: usize, y: usize, rgb: (u8, u8, u8)) -> () {
+        assert!(x < self.width);
+        assert!(y < self.height);
+
         self.rData[y][x] = rgb.0;
         self.gData[y][x] = rgb.1;
         self.bData[y][x] = rgb.2;
@@ -37,5 +70,7 @@ fn main() -> io::Result<()> {
 
     println!("Hello, world!");
 
+    let img = RgbImage::new(100, 50);
+    
     Ok(())
 }
