@@ -42,10 +42,24 @@ impl Image {
             }
         }
     }
+    // TODO: バイナリではなくストリームで処理できるように書き換え
+    fn from_jpeg(binary: &Vec<u8>) -> Result<Image, String> {
+        // SOI
+        let soiIndex = 0;
+        if binary[soiIndex + 0] != 0xff || binary[soiIndex + 1] != 0xd8 {
+            return Err("invalid format".to_owned());
+        }
+        // APP0
+        // let app0Index = 2;
+        // if binary[app0Index + 0] != 0xff || binary[app0Index + 1] != 0xe0 {
+        //     return Err("app0 header error".to_owned());
+        // }
+        
+        let dst = Image::new(0, 0, 3);
+        return Ok(dst);
+    }
 }
 
-fn decode_jpeg(binary: &Vec<u8>) {
-}
 
 fn main() -> io::Result<()> {
     // #TODO: 切り替えられるように置き換え
@@ -58,7 +72,7 @@ fn main() -> io::Result<()> {
 
     println!("Hello, world!");
 
-    let img = Image::new(100, 50, 3);
+    let img = Image::from_jpeg(&buf);
     
     Ok(())
 }
