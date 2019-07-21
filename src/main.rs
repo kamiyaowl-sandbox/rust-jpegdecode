@@ -2,57 +2,45 @@ use std::io;
 use std::fs::File;
 use std::io::prelude::*;
 
-// T=u8: 24bpp rgb
-struct RgbImage {
+struct Image {
     width: usize,
     height: usize,
+    channels: usize,
     
-    rData: Vec<Vec<u8>>,
-    gData: Vec<Vec<u8>>,
-    bData: Vec<Vec<u8>>,
+    // width -> height -> channels
+    // self->data[y][x][c]
+    data: Vec<Vec<Vec<u8>>>,
 }
 
-impl RgbImage {
-    fn new(w: usize, h: usize) -> RgbImage {
+impl Image {
+    fn new(w: usize, h: usize, c: usize) -> Image {
         assert!(w > 0);
         assert!(h > 0);
+        assert!(c > 0);
 
-        RgbImage {
+        Image {
             width: w,
             height: h,
-            rData: vec![vec![0; w]; h],
-            gData: vec![vec![0; w]; h],
-            bData: vec![vec![0; w]; h],
+            channels: c,
+            data: vec![vec![vec![0; c]; w]; h],
         }
     }
     fn clear(&mut self) -> () {
-        self.fill((0, 0, 0));
+        let pixel = vec![0, 0, 0];
+        self.fill(&pixel);
     }
-    fn fill(&mut self, rgb: (u8, u8, u8)) -> () {
+    fn fill(&mut self, pixel: &Vec<u8>) -> () {
         assert!(self.width > 0);
         assert!(self.height > 0);
+        assert!(pixel.len() == self.channels);
 
         for y in 0..self.height {
             for x in 0..self.width {
-                self.rData[y][x] = rgb.0;
-                self.gData[y][x] = rgb.1;
-                self.bData[y][x] = rgb.2;
+                for c in 0..self.channels {
+                    self.data[y][x][c] = pixel[c];
+                }
             }
         }
-    }
-    fn get_pixel(self, x: usize, y: usize) -> (u8, u8, u8) {
-        assert!(x < self.width);
-        assert!(y < self.height);
-        
-        return (self.rData[y][x], self.gData[y][x], self.bData[y][x]);
-    }
-    fn set_pixel(&mut self, x: usize, y: usize, rgb: (u8, u8, u8)) -> () {
-        assert!(x < self.width);
-        assert!(y < self.height);
-
-        self.rData[y][x] = rgb.0;
-        self.gData[y][x] = rgb.1;
-        self.bData[y][x] = rgb.2;
     }
 }
 
@@ -70,7 +58,7 @@ fn main() -> io::Result<()> {
 
     println!("Hello, world!");
 
-    let img = RgbImage::new(100, 50);
+    let img = Image::new(100, 50, 3);
     
     Ok(())
 }
