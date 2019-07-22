@@ -42,39 +42,37 @@ impl Image {
             }
         }
     }
-    fn from_jpeg(binary: &Vec<u8>) -> Result<Image, String> {
-        // SOI
-        let soiIndex = 0;
-        if binary[soiIndex + 0] != 0xff || binary[soiIndex + 1] != 0xd8 {
-            return Err("invalid format".to_owned());
-        }
-        // APP0
-        // let app0Index = 2;
-        // if binary[app0Index + 0] != 0xff || binary[app0Index + 1] != 0xe0 {
-        //     return Err("app0 header error".to_owned());
-        // }
-        
-        let dst = Image::new(0, 0, 3);
-        return Ok(dst);
+    fn from_jpeg(r: &mut BinaryReader) -> Result<Image, String> {
+        let header = r.read_u16_big_endian();
+        unimplemented!();
     }
 }
 
-trait Reader {
-    fn read(&self, buf: &[u8], len: usize) -> usize;
-    fn read_u16_big_endian(&self) -> Option<u16> {
-        let read_buf: [u8; 2] = [0; 2];
-        match self.read(&read_buf, 2) {
+trait BinaryReader {
+    fn read_u8(&mut self, buf: &mut [u8]) -> usize;
+    fn read_u16_big_endian(&mut self) -> Option<u16> {
+        let mut read_buf: [u8; 2] = [0; 2];
+        match self.read_u8(&mut read_buf) {
             2 => Some(((read_buf[0] as u16) << 8) | (read_buf[1] as u16)),
             _ => None
         }
     }
-    fn read_u32_big_endian(&self) -> Option<u32> {
-        let read_buf: [u8; 4] = [0; 4];
-        match self.read(&read_buf, 4) {
+    fn read_u32_big_endian(&mut self) -> Option<u32> {
+        let mut read_buf: [u8; 4] = [0; 4];
+        match self.read_u8(&mut read_buf) {
             4 => Some(((read_buf[0] as u32) << 24) | ((read_buf[1] as u32) << 16) | ((read_buf[2] as u32) << 8) | (read_buf[3] as u32)),
             _ => None
         }
     }
+}
+
+impl BinaryReader for File {
+    fn read_u8(&mut self, buf: &mut [u8]) -> usize {
+        match self.read(buf) {
+            Ok(n) => n,
+            Err(_) => 0,
+        }
+    }    
 }
 
 fn main() -> io::Result<()> {
@@ -88,7 +86,7 @@ fn main() -> io::Result<()> {
 
     println!("Hello, world!");
 
-    let img = Image::from_jpeg(&buf);
+    let img = Image::from_jpeg(&mut file);
     
     Ok(())
 }
