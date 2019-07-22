@@ -42,7 +42,6 @@ impl Image {
             }
         }
     }
-    // TODO: バイナリではなくストリームで処理できるように書き換え
     fn from_jpeg(binary: &Vec<u8>) -> Result<Image, String> {
         // SOI
         let soiIndex = 0;
@@ -60,6 +59,23 @@ impl Image {
     }
 }
 
+trait Reader {
+    fn read(&self, buf: &[u8], len: usize) -> usize;
+    fn read_u16_big_endian(&self) -> Option<u16> {
+        let read_buf: [u8; 2] = [0; 2];
+        match self.read(&read_buf, 2) {
+            2 => Some(((read_buf[0] as u16) << 8) | (read_buf[1] as u16)),
+            _ => None
+        }
+    }
+    fn read_u32_big_endian(&self) -> Option<u32> {
+        let read_buf: [u8; 4] = [0; 4];
+        match self.read(&read_buf, 4) {
+            4 => Some(((read_buf[0] as u32) << 24) | ((read_buf[1] as u32) << 16) | ((read_buf[2] as u32) << 8) | (read_buf[3] as u32)),
+            _ => None
+        }
+    }
+}
 
 fn main() -> io::Result<()> {
     // #TODO: 切り替えられるように置き換え
