@@ -1,4 +1,5 @@
 use std::io;
+use std::io::BufReader;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -43,8 +44,31 @@ impl Image {
         }
     }
     fn from_jpeg(r: &mut BinaryReader) -> Result<Image, String> {
-        let header = r.read_u16_big_endian();
-        unimplemented!();
+        let mut dst = Image::new(1 ,1, 1);
+        let mut is_soi = false;
+        let mut is_eoi = false;
+        while !is_eoi {
+            match r.read_u16_big_endian() {
+                // SOI
+                Some(0xffd8) => {
+                    is_soi = true;
+                },
+                // EOI
+                Some(0xffd9) => {
+                    is_eoi = true;
+                },
+                Some(x) => {
+                    panic!("not implemented marker {:x}", x);
+                },
+                None => {
+                    return Err("unexpected eof".to_owned());
+                }
+            }
+            if !is_soi {
+                return Err("bad format".to_owned());
+            }
+        }
+        Ok(dst)
     }
 }
 
@@ -66,7 +90,7 @@ trait BinaryReader {
     }
 }
 
-impl BinaryReader for File {
+impl BinaryReader for BufReader<File> {
     fn read_u8(&mut self, buf: &mut [u8]) -> usize {
         match self.read(buf) {
             Ok(n) => n,
@@ -75,18 +99,13 @@ impl BinaryReader for File {
     }    
 }
 
-fn main() -> io::Result<()> {
+fn main() {
     // #TODO: 切り替えられるように置き換え
     let src = "/Users/user/Documents/rust-xmodem/test-image/sample1.jpeg";
-    // read file
-    let mut file = File::open(src)?;
+    let mut reader = BufReader::new(File::open(src).unwrap());
 
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-
-    println!("Hello, world!");
-
-    let img = Image::from_jpeg(&mut file);
-    
-    Ok(())
+    match Image::from_jpeg(&mut reader) {
+        Ok(img) => println!("parse finish!"),
+        Err(err) => panic!(err)
+    }
 }
