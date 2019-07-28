@@ -2,6 +2,30 @@ use std::io::BufReader;
 use std::fs::File;
 use std::io::prelude::*;
 
+struct JpegImage {
+    // DQT
+    quantize_table  : [[u16; 64]; 4],
+    // SOF
+    sof_marker      : Option<u16>,
+    height          : Option<usize>,
+    width           : Option<usize>,
+    components      : Option<usize>,
+    component_table : [Component; 4],
+}
+
+#[derive(Copy, Clone)]
+enum ComponentIdentifier {
+    Unknown,
+    Y,Cb,Cr,I,Q,
+}
+#[derive(Copy, Clone)]
+struct Component {
+    id: ComponentIdentifier,
+    h_factor: u8,
+    w_factor: u8,
+    qt_index: u8,
+}
+
 struct Image {
     width: usize,
     height: usize,
@@ -11,6 +35,7 @@ struct Image {
     // self->data[y][x][c]
     data: Vec<Vec<Vec<u8>>>,
 }
+
 impl Image {
     fn new(w: usize, h: usize, c: usize) -> Image {
         assert!(w > 0);
@@ -42,23 +67,36 @@ impl Image {
         }
     }
     fn from_jpeg(r: &mut BinaryReader) -> Result<Image, String> {
+        let mut dst = JpegImage {
+            quantize_table: [[0; 64]; 4],
+            width: None,
+            height: None,
+            sof_marker: None,
+            components: None,
+            component_table: [Component{
+                id: ComponentIdentifier::Unknown,
+                h_factor: 0,
+                w_factor: 0,
+                qt_index: 0,
+            }; 4],
+        };
         let mut is_soi = false; // start of imageがあったか
         let mut is_eoi = false; // end of imageがあったか
 
-        // DQT 4つの識別子を持ち、8 or 16bitの精度で格納
-        let mut quantize_table: [Vec<u16>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new(), ];
-
         while !is_eoi {
-            match r.read_u16_big_endian() {
+            let marker = r.read_u16_big_endian();
+            is_eoi = match marker {
                 // SOI
                 Some(0xffd8) => {
                     is_soi = true;
-                    println!("[soi] ffd8");
+                    println!("[SOI] ffd8");
+                    false
                 },
                 // EOI
                 Some(0xffd9) => {
                     is_eoi = true;
-                    println!("[eoi] ffd9");
+                    println!("[EOI] ffd9");
+                    true
                 },
                 // DQT
                 Some(0xffdb) => {
@@ -66,38 +104,66 @@ impl Image {
                     let identifier = r.read_u8().unwrap();
                     let accuracy_byte = if ((identifier >> 4) & 0x1) == 0x1 { 2 } else { 1 };
                     let table_index = (identifier & 0x03) as usize;
-                    println!("[eoi] ffdb len:{} accuracy:{} index:{}", len, accuracy_byte, table_index);
-                    // 同じテーブルは定義済のはず
-                    assert_eq!(quantize_table[table_index].len(), 0);
+                    println!("[DQT] ffdb len:{} accuracy:{} index:{}", len, accuracy_byte, table_index);
                     // 順番に読み出して量子化テーブルに格納
                     let entry_count = (len / accuracy_byte) as usize;
-                    for _ in 0..entry_count {
+                    assert_eq!(entry_count, 64);
+                    for i in 0..entry_count {
                         let v = match accuracy_byte {
                             1 => r.read_u8().unwrap() as u16,
                             2 => r.read_u16_big_endian().unwrap(),
                             _ => panic!("invalid accuracy in DQT"),
                         };
-                        quantize_table[table_index].push(v);
+                        dst.quantize_table[table_index][i] = v;
                     }
-                    assert_eq!(quantize_table[table_index].len(), entry_count);
+                    false
+                },
+                // DHT
+                // Some(0xffc2) => {
+                // },
+                // SOF
+                Some(x) if ((0xffc0 <= x) && (x <= 0xffcf) && (x != 0xffc4)) => {
+                    dst.sof_marker = Some(x); // ffc0=baseline, ffc2=progressive
+                    let len = r.read_u16_big_endian().unwrap() - 8; // field length分を引く
+                    let precision  = r.read_u8().unwrap() / 8;
+                    dst.height     = Some(r.read_u16_big_endian().unwrap() as usize);
+                    dst.width      = Some(r.read_u16_big_endian().unwrap() as usize);
+                    dst.components = Some(r.read_u8().unwrap() as usize);
+                    println!("[SOF] marker:{:x} len:{} width:{} height:{} components:{}", x, len, dst.width.unwrap(), dst.height.unwrap(), dst.components.unwrap());
+                    // 成分を順番に読み出す
+                    assert_eq!(len as usize, 3 * dst.components.unwrap()); // 1Componentの長さは8byteのはず
+                    for i in 0..dst.components.unwrap() {
+                        dst.component_table[i].id = match r.read_u8() {
+                            Some(1) => ComponentIdentifier::Y,
+                            Some(2) => ComponentIdentifier::Cb,
+                            Some(3) => ComponentIdentifier::Cr,
+                            Some(4) => ComponentIdentifier::I,
+                            Some(5) => ComponentIdentifier::Q,
+                            _ => panic!("invalid component id"),
+                        };
+                        let factor: u8 = r.read_u8().unwrap();
+                        dst.component_table[i].w_factor = factor >> 4;
+                        dst.component_table[i].h_factor = factor & 0xf;
+                        dst.component_table[i].qt_index = r.read_u8().unwrap();
+                        println!("component[{}] = w:{} h:{} qt#:{}", i, dst.component_table[i].w_factor, dst.component_table[i].h_factor, dst.component_table[i].qt_index);
+                    }
+                    false
                 }
-                Some(x) if x & 0xff00 == 0xff00 => {
+                Some(x) => {
                     let len = r.read_u16_big_endian().unwrap() - 2; // field length分を引く
                     println!("not implemented marker:{:x} len:{}", x, len);
                     // 今は内容を気にしないので読み飛ばす
                     for _ in 0..len {
                         let _ = r.read_u8();
                     }
+                    false
                 },
-                Some(x) => {
-                    println!("invalid marker {:x}", x);                    
-                }
                 None => {
-                    return Err("unexpected eof".to_owned());
-                }
-            }
+                    panic!("unexpected eof");
+                },
+            };
             if !is_soi {
-                return Err("bad format".to_owned());
+                panic!("bad format(marker 'SOI' not found)");
             }
         }
 
