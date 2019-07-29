@@ -16,17 +16,12 @@ struct JpegImage {
     components      : usize,  // Nf
     component_table : [Component; 4], // Tqn
     // DHT
-    huffman_table  : [HuffmanTableInfo; 4],
+    huffman_table  : [[HuffmanTableInfo; 2]; 4], // Thn(0~3) -> Tcn(ac/dc)
 }
 
 #[derive(Copy, Clone)]
-enum ComponentIdentifier {
-    Unknown,
-    Y,Cb,Cr,I,Q,
-}
-#[derive(Copy, Clone)]
 struct Component {
-    id: ComponentIdentifier,
+    id      : u8,
     h_factor: u8,
     w_factor: u8,
     qt_index: u8,
@@ -89,37 +84,69 @@ impl Image {
             sof_marker: 0,
             components: 0,
             component_table: [Component{
-                id: ComponentIdentifier::Unknown,
+                id      : 0,
                 h_factor: 0,
                 w_factor: 0,
                 qt_index: 0,
             }; 4],
             // TODO: vecをやめる
             huffman_table: [
-                HuffmanTableInfo{
-                    is_dc: false,
-                    id: 0,
-                    length: [0; 16],
-                    detifnitions: Vec::new(),
-                },
-                HuffmanTableInfo{
-                    is_dc: false,
-                    id: 0,
-                    length: [0; 16],
-                    detifnitions: Vec::new(),
-                },
-                HuffmanTableInfo{
-                    is_dc: false,
-                    id: 0,
-                    length: [0; 16],
-                    detifnitions: Vec::new(),
-                },
-                HuffmanTableInfo{
-                    is_dc: false,
-                    id: 0,
-                    length: [0; 16],
-                    detifnitions: Vec::new(),
-                },
+                [
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                ],
+                [
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                ],
+                [
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                ],
+                [
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                    HuffmanTableInfo{
+                        is_dc: false,
+                        id: 0,
+                        length: [0; 16],
+                        detifnitions: Vec::new(),
+                    },
+                ],
             ],
         };
 
@@ -166,23 +193,50 @@ impl Image {
                     let len = r.read_u16_big_endian().unwrap() - 3; 
                     println!("[DHT] ffc4 len:{}", len);
                     let class_info = r.read_u8().unwrap();
-                    let is_dc = if (class_info >> 4) == 0 { true } else { false };
-                    let id    = (class_info & 0xf) as usize;
-                    assert!(id < 4);
-                    let mut info = &mut dst.huffman_table[id];
+                    let tcn = (class_info >> 4 ) as usize;// dc or ac
+                    let thn = (class_info & 0xf) as usize;// 0 ~ 3
+                    assert!(tcn < 2);
+                    assert!(thn < 4);
+                    let mut info = &mut (dst.huffman_table[thn][tcn]);
                     let mut length_sum = 0;
 
-                    info.is_dc = is_dc;
-                    info.id    = id;
+                    info.is_dc = if tcn == 0 { true } else { false };
+                    info.id    = thn;
                     for i in 0..16 {
                         info.length[i] = r.read_u8().unwrap();
                         length_sum += info.length[i];
                     }
-                    for i in 0..length_sum {
+                    info.detifnitions.clear();
+                    for _ in 0..length_sum {
                         let data = r.read_u8().unwrap();
                         info.detifnitions.push(data);
                     }
                     println!("[DHT] id:{} is_dc:{}", info.id, info.is_dc);
+                    false
+                },
+                // SOS
+                Some(0xffda) => {
+                    let len = r.read_u16_big_endian().unwrap() - 2;
+                    let nf = r.read_u8().unwrap();
+                    let cs = r.read_u8().unwrap();
+                    let identifier = r.read_u8().unwrap();
+                    let td = (identifier >>  4) as usize;  // DCの構成要素
+                    let ta = (identifier & 0xf) as usize; // ACの構成要素
+                    let spector_sel_start = r.read_u8().unwrap();
+                    let spector_sel_end   = r.read_u8().unwrap();
+                    let spector_sel       = r.read_u8().unwrap();
+                    // decode src
+                    let component = match cs {
+                        c if (c == dst.component_table[0].id) => &dst.component_table[0],
+                        c if (c == dst.component_table[1].id) => &dst.component_table[1],
+                        c if (c == dst.component_table[2].id) => &dst.component_table[2],
+                        c if (c == dst.component_table[3].id) => &dst.component_table[3],
+                        _ => panic!("invalid component id"),
+                    };
+                    assert!(td < 4);
+                    assert!(ta < 4);
+                    let ht_dc = &dst.huffman_table[td][0]; // 0==dc
+                    let ht_ac = &dst.huffman_table[ta][1]; // 0==dc
                     false
                 },
                 // SOF
@@ -198,14 +252,7 @@ impl Image {
                     assert_eq!(len as usize, 3 * dst.components); // 1Componentの長さは8byteのはず
                     for i in 0..dst.components {
                         let mut comp = &mut dst.component_table[i];
-                        comp.id = match r.read_u8() {
-                            Some(1) => ComponentIdentifier::Y,
-                            Some(2) => ComponentIdentifier::Cb,
-                            Some(3) => ComponentIdentifier::Cr,
-                            Some(4) => ComponentIdentifier::I,
-                            Some(5) => ComponentIdentifier::Q,
-                            _ => panic!("invalid component id"),
-                        };
+                        comp.id = r.read_u8().unwrap();
                         let factor: u8 = r.read_u8().unwrap();
                         comp.w_factor = factor >> 4;
                         comp.h_factor = factor & 0xf;
