@@ -237,6 +237,7 @@ impl Image {
                     assert!(ta < 4);
                     let ht_dc = &dst.huffman_table[td][0]; // 0==dc
                     let ht_ac = &dst.huffman_table[ta][1]; // 0==dc
+                    // データの読み出しと展開
                     false
                 },
                 // SOF
